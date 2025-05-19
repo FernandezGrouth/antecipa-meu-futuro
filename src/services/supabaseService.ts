@@ -1,6 +1,6 @@
-
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface Goal {
   id: string;
@@ -42,9 +42,13 @@ export interface Transaction {
 // Goals
 export const fetchGoals = async () => {
   try {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    
     const { data, error } = await supabase
       .from("goals")
       .select("*")
+      .eq("user_id", sessionData.session?.user.id)
       .order("created_at", { ascending: false });
     
     if (error) throw error;
@@ -61,9 +65,15 @@ export const fetchGoals = async () => {
 
 export const createGoal = async (goal: Omit<Goal, "id" | "user_id" | "created_at">) => {
   try {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    
     const { data, error } = await supabase
       .from("goals")
-      .insert(goal)
+      .insert({
+        ...goal,
+        user_id: sessionData.session?.user.id
+      })
       .select()
       .single();
     
@@ -122,9 +132,13 @@ export const deleteGoal = async (id: string) => {
 // Loans
 export const fetchLoans = async () => {
   try {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    
     const { data, error } = await supabase
       .from("loans")
       .select("*")
+      .eq("user_id", sessionData.session?.user.id)
       .order("created_at", { ascending: false });
     
     if (error) throw error;
@@ -141,9 +155,15 @@ export const fetchLoans = async () => {
 
 export const createLoan = async (loan: Omit<Loan, "id" | "user_id" | "created_at">) => {
   try {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    
     const { data, error } = await supabase
       .from("loans")
-      .insert(loan)
+      .insert({
+        ...loan,
+        user_id: sessionData.session?.user.id
+      })
       .select()
       .single();
     
@@ -162,9 +182,13 @@ export const createLoan = async (loan: Omit<Loan, "id" | "user_id" | "created_at
 // Transactions
 export const fetchTransactions = async () => {
   try {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    
     const { data, error } = await supabase
       .from("transactions")
       .select("*")
+      .eq("user_id", sessionData.session?.user.id)
       .order("date", { ascending: false });
     
     if (error) throw error;
@@ -181,9 +205,15 @@ export const fetchTransactions = async () => {
 
 export const createTransaction = async (transaction: Omit<Transaction, "id" | "user_id" | "created_at">) => {
   try {
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError) throw sessionError;
+    
     const { data, error } = await supabase
       .from("transactions")
-      .insert(transaction)
+      .insert({
+        ...transaction,
+        user_id: sessionData.session?.user.id
+      })
       .select()
       .single();
     

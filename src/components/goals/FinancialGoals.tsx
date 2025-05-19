@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -5,6 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
 import { fetchGoals, createGoal, updateGoal, deleteGoal, Goal } from '@/services/supabaseService';
 import { toast } from '@/components/ui/use-toast';
+import { Loader2 } from 'lucide-react';
 
 const goalCategories = [
   { id: 'emergency', name: 'Reserva de Emergência', color: '#FF6B6B' },
@@ -35,6 +37,7 @@ const FinancialGoals = () => {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -46,14 +49,26 @@ const FinancialGoals = () => {
   const [priority, setPriority] = useState('medium');
   
   useEffect(() => {
-    loadGoals();
+    if (user) {
+      loadGoals();
+    }
   }, [user]);
   
   const loadGoals = async () => {
     setLoading(true);
-    const data = await fetchGoals();
-    setGoals(data);
-    setLoading(false);
+    try {
+      const data = await fetchGoals();
+      setGoals(data);
+    } catch (error) {
+      console.error("Failed to load goals:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível carregar as metas.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
   
   const resetForm = () => {
@@ -86,11 +101,22 @@ const FinancialGoals = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!title || !targetAmount || !deadline) {
+      toast({
+        title: "Campos obrigatórios",
+        description: "Preencha todos os campos obrigatórios.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setSubmitting(true);
+    
     const goalData = {
       title,
       description: description || null,
       target_amount: parseFloat(targetAmount),
-      current_amount: parseFloat(currentAmount),
+      current_amount: parseFloat(currentAmount || "0"),
       deadline: new Date(deadline).toISOString(),
       category,
       priority,
@@ -116,31 +142,63 @@ const FinancialGoals = () => {
       loadGoals();
     } catch (error) {
       console.error("Error saving goal:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível salvar a meta.",
+        variant: "destructive",
+      });
+    } finally {
+      setSubmitting(false);
     }
   };
   
   const handleDelete = async (id: string) => {
     if (window.confirm("Tem certeza que deseja excluir esta meta?")) {
-      const success = await deleteGoal(id);
-      if (success) {
+      try {
+        const success = await deleteGoal(id);
+        if (success) {
+          toast({
+            title: "Meta excluída",
+            description: "Sua meta financeira foi excluída com sucesso.",
+          });
+          loadGoals();
+        }
+      } catch (error) {
+        console.error("Error deleting goal:", error);
         toast({
-          title: "Meta excluída",
-          description: "Sua meta financeira foi excluída com sucesso.",
+          title: "Erro",
+          description: "Não foi possível excluir a meta.",
+          variant: "destructive",
         });
-        loadGoals();
       }
     }
   };
   
   const handleUpdateProgress = async (goal: Goal, newAmount: string) => {
     const amount = parseFloat(newAmount);
-    if (!isNaN(amount)) {
+    if (isNaN(amount)) {
+      toast({
+        title: "Valor inválido",
+        description: "Por favor, insira um valor numérico válido.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    try {
       await updateGoal(goal.id, { current_amount: amount });
       toast({
         title: "Progresso atualizado",
         description: "O progresso da sua meta foi atualizado com sucesso.",
       });
       loadGoals();
+    } catch (error) {
+      console.error("Error updating progress:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível atualizar o progresso.",
+        variant: "destructive",
+      });
     }
   };
   
@@ -159,6 +217,15 @@ const FinancialGoals = () => {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
     return diffDays;
   };
+  
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-finance-blue" />
+        <span className="ml-2 text-finance-blue">Carregando metas financeiras...</span>
+      </div>
+    );
+  }
   
   return (
     <div className="space-y-8">
@@ -181,7 +248,7 @@ const FinancialGoals = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Título</label>
+                <label className="block text-sm font-medium mb-1">Título *</label>
                 <input
                   type="text"
                   value={title}
@@ -192,7 +259,7 @@ const FinancialGoals = () => {
               </div>
               
               <div>
-                <label className="block text-sm font-medium mb-1">Categoria</label>
+                <label className="block text-sm font-medium mb-1">Categoria *</label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
@@ -205,7 +272,7 @@ const FinancialGoals = () => {
               </div>
               
               <div>
-                <label className="block text-sm font-medium mb-1">Valor Alvo (R$)</label>
+                <label className="block text-sm font-medium mb-1">Valor Alvo (R$) *</label>
                 <input
                   type="number"
                   value={targetAmount}
@@ -226,12 +293,11 @@ const FinancialGoals = () => {
                   className="w-full p-2 border rounded"
                   min="0"
                   step="0.01"
-                  required
                 />
               </div>
               
               <div>
-                <label className="block text-sm font-medium mb-1">Data Limite</label>
+                <label className="block text-sm font-medium mb-1">Data Limite *</label>
                 <input
                   type="date"
                   value={deadline}
@@ -242,7 +308,7 @@ const FinancialGoals = () => {
               </div>
               
               <div>
-                <label className="block text-sm font-medium mb-1">Prioridade</label>
+                <label className="block text-sm font-medium mb-1">Prioridade *</label>
                 <select
                   value={priority}
                   onChange={(e) => setPriority(e.target.value)}
@@ -276,17 +342,26 @@ const FinancialGoals = () => {
               >
                 Cancelar
               </Button>
-              <Button type="submit" className="bg-finance-blue hover:bg-blue-700">
-                {editingGoal ? 'Atualizar' : 'Criar'} Meta
+              <Button 
+                type="submit" 
+                className="bg-finance-blue hover:bg-blue-700"
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Processando...
+                  </>
+                ) : (
+                  `${editingGoal ? 'Atualizar' : 'Criar'} Meta`
+                )}
               </Button>
             </div>
           </form>
         </Card>
       )}
       
-      {loading ? (
-        <div className="text-center py-8">Carregando metas...</div>
-      ) : goals.length === 0 ? (
+      {goals.length === 0 ? (
         <div className="text-center py-8">
           <p className="text-gray-500 mb-4">Você ainda não tem metas financeiras.</p>
           <Button 
@@ -332,7 +407,7 @@ const FinancialGoals = () => {
                     </div>
                     <Progress 
                       value={progress} 
-                      className="h-2 mt-2 bg-opacity-20" 
+                      className="h-2 mt-2" 
                       style={{ backgroundColor: `${categoryColor}30` }} 
                     />
                   </div>
