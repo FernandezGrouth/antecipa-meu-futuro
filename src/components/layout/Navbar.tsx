@@ -2,8 +2,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/contexts/AuthContext';
 
 const Navbar = () => {
+  const { user, signOut } = useAuth();
+
   return (
     <nav className="w-full bg-white shadow-sm">
       <div className="container mx-auto flex items-center justify-between py-4">
@@ -18,7 +21,15 @@ const Navbar = () => {
         </div>
         
         <div className="flex items-center space-x-2">
-          <Button variant="outline" className="hidden md:block">Entrar</Button>
+          {user ? (
+            <Button onClick={signOut} variant="outline" className="hidden md:block">
+              Sair
+            </Button>
+          ) : (
+            <Link to="/auth">
+              <Button variant="outline" className="hidden md:block">Entrar</Button>
+            </Link>
+          )}
           <Button className="bg-finance-blue hover:bg-blue-700">Começar agora</Button>
         </div>
       </div>

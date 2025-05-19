@@ -1,45 +1,25 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { useAuth } from '@/contexts/AuthContext';
+import { fetchGoals, createGoal, updateGoal, deleteGoal, Goal } from '@/services/supabaseService';
+import { toast } from '@/components/ui/use-toast';
 
-// Sample goals data
-const initialGoals = [
-  {
-    id: 1,
-    name: 'Quitar financiamento do carro',
-    currentAmount: 12000,
-    targetAmount: 25000,
-    endDate: '2025-12-31',
-    category: 'Dívidas',
-    priority: 'Alta',
-    color: '#0066CC',
-  },
-  {
-    id: 2,
-    name: 'Viagem para praia',
-    currentAmount: 3500,
-    targetAmount: 5000,
-    endDate: '2025-07-15',
-    category: 'Lazer',
-    priority: 'Média',
-    color: '#FF5A5F',
-  },
-  {
-    id: 3,
-    name: 'Reserva de emergência',
-    currentAmount: 8000,
-    targetAmount: 20000,
-    endDate: '2026-05-10',
-    category: 'Segurança',
-    priority: 'Alta',
-    color: '#00A67E',
-  }
+const goalCategories = [
+  { id: 'emergency', name: 'Reserva de Emergência', color: '#FF6B6B' },
+  { id: 'retirement', name: 'Aposentadoria', color: '#4ECDC4' },
+  { id: 'travel', name: 'Viagem', color: '#45B7D1' },
+  { id: 'education', name: 'Educação', color: '#FFA62B' },
+  { id: 'home', name: 'Casa Própria', color: '#A78BFA' },
+  { id: 'car', name: 'Veículo', color: '#34D399' },
+  { id: 'other', name: 'Outro', color: '#94A3B8' },
+];
+
+const priorityLevels = [
+  { id: 'high', name: 'Alta', color: '#EF4444' },
+  { id: 'medium', name: 'Média', color: '#F59E0B' },
+  { id: 'low', name: 'Baixa', color: '#10B981' },
 ];
 
 const formatCurrency = (value: number) => {
@@ -49,416 +29,378 @@ const formatCurrency = (value: number) => {
   }).format(value);
 };
 
-interface Goal {
-  id: number;
-  name: string;
-  currentAmount: number;
-  targetAmount: number;
-  endDate: string;
-  category: string;
-  priority: string;
-  color: string;
-}
-
 const FinancialGoals = () => {
-  const [goals, setGoals] = useState<Goal[]>(initialGoals);
-  const [newGoal, setNewGoal] = useState({
-    name: '',
-    targetAmount: '',
-    endDate: '',
-    category: 'Outros',
-    priority: 'Média',
-  });
-  const [addAmount, setAddAmount] = useState({
-    goalId: 0,
-    amount: ''
-  });
+  const { user } = useAuth();
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   
-  const calculateProgress = (current: number, target: number) => {
-    return Math.min(Math.round((current / target) * 100), 100);
+  // Form state
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [targetAmount, setTargetAmount] = useState('');
+  const [currentAmount, setCurrentAmount] = useState('');
+  const [deadline, setDeadline] = useState('');
+  const [category, setCategory] = useState('emergency');
+  const [priority, setPriority] = useState('medium');
+  
+  useEffect(() => {
+    loadGoals();
+  }, [user]);
+  
+  const loadGoals = async () => {
+    setLoading(true);
+    const data = await fetchGoals();
+    setGoals(data);
+    setLoading(false);
   };
   
-  const calculateTimeRemaining = (endDate: string) => {
-    const end = new Date(endDate);
-    const now = new Date();
-    const diffInTime = end.getTime() - now.getTime();
-    const diffInDays = Math.ceil(diffInTime / (1000 * 3600 * 24));
-    
-    if (diffInDays < 0) {
-      return 'Meta vencida';
-    } else if (diffInDays === 0) {
-      return 'Último dia';
-    } else if (diffInDays === 1) {
-      return '1 dia restante';
-    } else if (diffInDays < 30) {
-      return `${diffInDays} dias restantes`;
-    } else if (diffInDays < 365) {
-      const months = Math.floor(diffInDays / 30);
-      return `${months} ${months === 1 ? 'mês' : 'meses'} restantes`;
+  const resetForm = () => {
+    setTitle('');
+    setDescription('');
+    setTargetAmount('');
+    setCurrentAmount('');
+    setDeadline('');
+    setCategory('emergency');
+    setPriority('medium');
+    setEditingGoal(null);
+  };
+  
+  const handleShowForm = (goal?: Goal) => {
+    if (goal) {
+      setEditingGoal(goal);
+      setTitle(goal.title);
+      setDescription(goal.description || '');
+      setTargetAmount(goal.target_amount.toString());
+      setCurrentAmount(goal.current_amount.toString());
+      setDeadline(goal.deadline.split('T')[0]);
+      setCategory(goal.category);
+      setPriority(goal.priority);
     } else {
-      const years = Math.floor(diffInDays / 365);
-      const remainingMonths = Math.floor((diffInDays % 365) / 30);
-      if (remainingMonths === 0) {
-        return `${years} ${years === 1 ? 'ano' : 'anos'} restantes`;
+      resetForm();
+    }
+    setShowForm(true);
+  };
+  
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    const goalData = {
+      title,
+      description: description || null,
+      target_amount: parseFloat(targetAmount),
+      current_amount: parseFloat(currentAmount),
+      deadline: new Date(deadline).toISOString(),
+      category,
+      priority,
+    };
+    
+    try {
+      if (editingGoal) {
+        await updateGoal(editingGoal.id, goalData);
+        toast({
+          title: "Meta atualizada",
+          description: "Sua meta financeira foi atualizada com sucesso.",
+        });
       } else {
-        return `${years} ${years === 1 ? 'ano' : 'anos'} e ${remainingMonths} ${remainingMonths === 1 ? 'mês' : 'meses'} restantes`;
+        await createGoal(goalData);
+        toast({
+          title: "Meta criada",
+          description: "Sua nova meta financeira foi criada com sucesso.",
+        });
+      }
+      
+      setShowForm(false);
+      resetForm();
+      loadGoals();
+    } catch (error) {
+      console.error("Error saving goal:", error);
+    }
+  };
+  
+  const handleDelete = async (id: string) => {
+    if (window.confirm("Tem certeza que deseja excluir esta meta?")) {
+      const success = await deleteGoal(id);
+      if (success) {
+        toast({
+          title: "Meta excluída",
+          description: "Sua meta financeira foi excluída com sucesso.",
+        });
+        loadGoals();
       }
     }
   };
   
-  const handleAddGoal = () => {
-    if (!newGoal.name || !newGoal.targetAmount || !newGoal.endDate) return;
-    
-    const goal = {
-      id: Date.now(),
-      name: newGoal.name,
-      currentAmount: 0,
-      targetAmount: parseFloat(newGoal.targetAmount),
-      endDate: newGoal.endDate,
-      category: newGoal.category,
-      priority: newGoal.priority,
-      color: '#' + Math.floor(Math.random()*16777215).toString(16), // Random color
-    };
-    
-    setGoals([...goals, goal]);
-    
-    // Reset form
-    setNewGoal({
-      name: '',
-      targetAmount: '',
-      endDate: '',
-      category: 'Outros',
-      priority: 'Média',
-    });
+  const handleUpdateProgress = async (goal: Goal, newAmount: string) => {
+    const amount = parseFloat(newAmount);
+    if (!isNaN(amount)) {
+      await updateGoal(goal.id, { current_amount: amount });
+      toast({
+        title: "Progresso atualizado",
+        description: "O progresso da sua meta foi atualizado com sucesso.",
+      });
+      loadGoals();
+    }
   };
   
-  const handleAddToGoal = () => {
-    if (!addAmount.goalId || !addAmount.amount) return;
-    
-    setGoals(goals.map(goal => {
-      if (goal.id === addAmount.goalId) {
-        return {
-          ...goal,
-          currentAmount: goal.currentAmount + parseFloat(addAmount.amount)
-        };
-      }
-      return goal;
-    }));
-    
-    // Reset form
-    setAddAmount({
-      goalId: 0,
-      amount: ''
-    });
+  const getCategoryColor = (categoryId: string) => {
+    return goalCategories.find(cat => cat.id === categoryId)?.color || '#94A3B8';
   };
   
-  const sortedGoals = [...goals].sort((a, b) => {
-    const aPriority = a.priority === 'Alta' ? 3 : a.priority === 'Média' ? 2 : 1;
-    const bPriority = b.priority === 'Alta' ? 3 : b.priority === 'Média' ? 2 : 1;
-    return bPriority - aPriority;
-  });
+  const getPriorityColor = (priorityId: string) => {
+    return priorityLevels.find(p => p.id === priorityId)?.color || '#94A3B8';
+  };
   
-  const completedGoals = goals.filter(goal => goal.currentAmount >= goal.targetAmount);
-  const inProgressGoals = goals.filter(goal => goal.currentAmount < goal.targetAmount);
+  const calculateDaysLeft = (deadline: string) => {
+    const today = new Date();
+    const deadlineDate = new Date(deadline);
+    const diffTime = deadlineDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
   
   return (
-    <div className="w-full max-w-6xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-finance-dark mb-2">Minhas Metas Financeiras</h1>
-        <p className="text-gray-600">Defina objetivos e acompanhe seu progresso financeiro</p>
+    <div className="space-y-8">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold text-finance-dark">Minhas Metas</h2>
+        <Button 
+          onClick={() => handleShowForm()} 
+          className="bg-finance-blue hover:bg-blue-700"
+        >
+          Nova Meta
+        </Button>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card className="financial-card">
-          <h3 className="text-lg font-semibold text-finance-dark mb-2">Total em Metas</h3>
-          <p className="text-3xl font-bold text-finance-blue">
-            {formatCurrency(goals.reduce((acc, goal) => acc + goal.currentAmount, 0))}
-          </p>
-          <div className="mt-2 text-sm text-gray-500">Valor acumulado</div>
-        </Card>
-        
-        <Card className="financial-card">
-          <h3 className="text-lg font-semibold text-finance-dark mb-2">Objetivo Total</h3>
-          <p className="text-3xl font-bold text-finance-purple">
-            {formatCurrency(goals.reduce((acc, goal) => acc + goal.targetAmount, 0))}
-          </p>
-          <div className="mt-2 text-sm text-gray-500">Valor a alcançar</div>
-        </Card>
-        
-        <Card className="financial-card">
-          <h3 className="text-lg font-semibold text-finance-dark mb-2">Progresso Geral</h3>
-          <p className="text-3xl font-bold text-finance-green">
-            {calculateProgress(
-              goals.reduce((acc, goal) => acc + goal.currentAmount, 0),
-              goals.reduce((acc, goal) => acc + goal.targetAmount, 0)
-            )}%
-          </p>
-          <div className="mt-2">
-            <Progress value={calculateProgress(
-              goals.reduce((acc, goal) => acc + goal.currentAmount, 0),
-              goals.reduce((acc, goal) => acc + goal.targetAmount, 0)
-            )} className="h-2" />
-          </div>
-        </Card>
-      </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2">
-          <Tabs defaultValue="in-progress">
-            <TabsList className="grid grid-cols-2 mb-4">
-              <TabsTrigger value="in-progress">Em Andamento</TabsTrigger>
-              <TabsTrigger value="completed">Concluídas</TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="in-progress" className="space-y-4">
-              {inProgressGoals.length === 0 && (
-                <Card className="financial-card text-center py-8">
-                  <p className="text-gray-500">Você ainda não tem metas em andamento.</p>
-                  <p className="text-gray-500 mt-2">Adicione uma meta para começar!</p>
-                </Card>
-              )}
-              
-              {inProgressGoals.map(goal => (
-                <Card key={goal.id} className="financial-card">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h3 className="text-xl font-semibold text-finance-dark">{goal.name}</h3>
-                      <span className="inline-block px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 mt-1">
-                        {goal.category}
-                      </span>
-                      <span className={`inline-block px-2 py-1 text-xs rounded-full ml-2 mt-1 ${
-                        goal.priority === 'Alta' ? 'bg-red-100 text-red-800' : 
-                        goal.priority === 'Média' ? 'bg-yellow-100 text-yellow-800' : 
-                        'bg-green-100 text-green-800'
-                      }`}>
-                        Prioridade {goal.priority}
-                      </span>
-                    </div>
-                    
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button variant="outline" size="sm">Adicionar Valor</Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Adicionar valor à meta</DialogTitle>
-                          <DialogDescription>
-                            Informe quanto deseja adicionar à meta "{goal.name}"
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="py-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="add-amount">Valor (R$)</Label>
-                            <Input
-                              id="add-amount"
-                              type="number"
-                              value={addAmount.goalId === goal.id ? addAmount.amount : ''}
-                              onChange={(e) => setAddAmount({ goalId: goal.id, amount: e.target.value })}
-                              placeholder="0.00"
-                              className="input-finance"
-                            />
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button onClick={handleAddToGoal}>Adicionar</Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                  
-                  <div className="mt-4">
-                    <div className="flex justify-between text-sm mb-1">
-                      <span>{formatCurrency(goal.currentAmount)}</span>
-                      <span>{formatCurrency(goal.targetAmount)}</span>
-                    </div>
-                    <Progress value={calculateProgress(goal.currentAmount, goal.targetAmount)} className="h-2" 
-                      style={{ backgroundColor: `${goal.color}30` }}
-                      indicatorStyle={{ backgroundColor: goal.color }}
-                    />
-                    <div className="flex justify-between items-center mt-2">
-                      <div className="text-sm font-medium">
-                        {calculateProgress(goal.currentAmount, goal.targetAmount)}% completo
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {calculateTimeRemaining(goal.endDate)}
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-4 pt-4 border-t border-gray-100">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-sm text-gray-500">Falta</p>
-                        <p className="font-semibold">
-                          {formatCurrency(goal.targetAmount - goal.currentAmount)}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-500">Valor Mensal Sugerido</p>
-                        <p className="font-semibold">
-                          {formatCurrency(
-                            (goal.targetAmount - goal.currentAmount) / 
-                            (Math.max(Math.ceil((new Date(goal.endDate).getTime() - new Date().getTime()) / 
-                            (1000 * 3600 * 24 * 30)), 1))
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </TabsContent>
-            
-            <TabsContent value="completed" className="space-y-4">
-              {completedGoals.length === 0 && (
-                <Card className="financial-card text-center py-8">
-                  <p className="text-gray-500">Você ainda não tem metas concluídas.</p>
-                  <p className="text-gray-500 mt-2">Continue progredindo em suas metas atuais!</p>
-                </Card>
-              )}
-              
-              {completedGoals.map(goal => (
-                <Card key={goal.id} className="financial-card">
-                  <div className="flex justify-between items-start mb-2">
-                    <div>
-                      <h3 className="text-xl font-semibold text-finance-dark">{goal.name}</h3>
-                      <span className="inline-block px-2 py-1 text-xs rounded-full bg-blue-100 text-blue-800 mt-1">
-                        {goal.category}
-                      </span>
-                      <div className="mt-2 inline-block px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm">
-                        Meta Concluída! 🎉
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-4">
-                    <div className="flex justify-between text-sm mb-1">
-                      <span>{formatCurrency(goal.currentAmount)}</span>
-                      <span>{formatCurrency(goal.targetAmount)}</span>
-                    </div>
-                    <Progress value={100} className="h-2 bg-green-100" 
-                      style={{ backgroundColor: `${goal.color}30` }}
-                      indicatorStyle={{ backgroundColor: goal.color }}
-                    />
-                    <div className="flex justify-between items-center mt-2">
-                      <div className="text-sm font-medium text-green-600">
-                        100% completo
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </TabsContent>
-          </Tabs>
-        </div>
-        
-        <div>
-          <Card className="financial-card">
-            <h3 className="text-xl font-semibold text-finance-dark mb-4">Adicionar Nova Meta</h3>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="goalName">Nome da Meta</Label>
-                <Input
-                  id="goalName"
-                  value={newGoal.name}
-                  onChange={(e) => setNewGoal({...newGoal, name: e.target.value})}
-                  placeholder="Ex: Carro novo, Reserva de emergência"
-                  className="input-finance"
+      {showForm && (
+        <Card className="p-6">
+          <h3 className="text-xl font-bold mb-4">
+            {editingGoal ? 'Editar Meta' : 'Nova Meta Financeira'}
+          </h3>
+          
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Título</label>
+                <input
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full p-2 border rounded"
+                  required
                 />
               </div>
               
-              <div className="space-y-2">
-                <Label htmlFor="goalAmount">Valor Total (R$)</Label>
-                <Input
-                  id="goalAmount"
+              <div>
+                <label className="block text-sm font-medium mb-1">Categoria</label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  className="w-full p-2 border rounded"
+                >
+                  {goalCategories.map((cat) => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Valor Alvo (R$)</label>
+                <input
                   type="number"
-                  value={newGoal.targetAmount}
-                  onChange={(e) => setNewGoal({...newGoal, targetAmount: e.target.value})}
-                  placeholder="0.00"
-                  className="input-finance"
+                  value={targetAmount}
+                  onChange={(e) => setTargetAmount(e.target.value)}
+                  className="w-full p-2 border rounded"
+                  min="0"
+                  step="0.01"
+                  required
                 />
               </div>
               
-              <div className="space-y-2">
-                <Label htmlFor="goalDate">Data de Conclusão</Label>
-                <Input
-                  id="goalDate"
+              <div>
+                <label className="block text-sm font-medium mb-1">Valor Atual (R$)</label>
+                <input
+                  type="number"
+                  value={currentAmount}
+                  onChange={(e) => setCurrentAmount(e.target.value)}
+                  className="w-full p-2 border rounded"
+                  min="0"
+                  step="0.01"
+                  required
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Data Limite</label>
+                <input
                   type="date"
-                  value={newGoal.endDate}
-                  onChange={(e) => setNewGoal({...newGoal, endDate: e.target.value})}
-                  className="input-finance"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                  className="w-full p-2 border rounded"
+                  required
                 />
               </div>
               
-              <div className="space-y-2">
-                <Label htmlFor="goalCategory">Categoria</Label>
-                <select 
-                  id="goalCategory"
-                  value={newGoal.category}
-                  onChange={(e) => setNewGoal({...newGoal, category: e.target.value})}
-                  className="input-finance"
+              <div>
+                <label className="block text-sm font-medium mb-1">Prioridade</label>
+                <select
+                  value={priority}
+                  onChange={(e) => setPriority(e.target.value)}
+                  className="w-full p-2 border rounded"
                 >
-                  <option value="Moradia">Moradia</option>
-                  <option value="Transporte">Transporte</option>
-                  <option value="Lazer">Lazer</option>
-                  <option value="Educação">Educação</option>
-                  <option value="Dívidas">Quitar Dívidas</option>
-                  <option value="Segurança">Reserva/Segurança</option>
-                  <option value="Investimento">Investimento</option>
-                  <option value="Outros">Outros</option>
+                  {priorityLevels.map((level) => (
+                    <option key={level.id} value={level.id}>{level.name}</option>
+                  ))}
                 </select>
               </div>
               
-              <div className="space-y-2">
-                <Label htmlFor="goalPriority">Prioridade</Label>
-                <select 
-                  id="goalPriority"
-                  value={newGoal.priority}
-                  onChange={(e) => setNewGoal({...newGoal, priority: e.target.value})}
-                  className="input-finance"
-                >
-                  <option value="Alta">Alta</option>
-                  <option value="Média">Média</option>
-                  <option value="Baixa">Baixa</option>
-                </select>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium mb-1">Descrição (opcional)</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full p-2 border rounded"
+                  rows={3}
+                />
               </div>
-              
+            </div>
+            
+            <div className="flex justify-end space-x-2 pt-4">
               <Button 
-                onClick={handleAddGoal}
-                className="btn-finance-primary w-full"
+                type="button" 
+                variant="outline" 
+                onClick={() => {
+                  setShowForm(false);
+                  resetForm();
+                }}
               >
-                Criar Nova Meta
+                Cancelar
+              </Button>
+              <Button type="submit" className="bg-finance-blue hover:bg-blue-700">
+                {editingGoal ? 'Atualizar' : 'Criar'} Meta
               </Button>
             </div>
-          </Card>
-          
-          <Card className="financial-card mt-6">
-            <h3 className="text-xl font-semibold text-finance-dark mb-4">Dicas para Alcançar Metas</h3>
-            <div className="space-y-4">
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <h4 className="font-medium">Regra 50/30/20</h4>
-                <p className="text-sm text-gray-600 mt-1">
-                  Destine 50% para necessidades, 30% para desejos e 20% para metas financeiras.
-                </p>
-              </div>
-              
-              <div className="p-3 bg-green-50 rounded-lg">
-                <h4 className="font-medium">Automatize seus Depósitos</h4>
-                <p className="text-sm text-gray-600 mt-1">
-                  Configure transferências automáticas para suas metas assim que receber seu salário.
-                </p>
-              </div>
-              
-              <div className="p-3 bg-yellow-50 rounded-lg">
-                <h4 className="font-medium">Comemore Pequenas Vitórias</h4>
-                <p className="text-sm text-gray-600 mt-1">
-                  Defina marcos intermediários e comemore quando alcançá-los para manter a motivação.
-                </p>
-              </div>
-            </div>
-          </Card>
+          </form>
+        </Card>
+      )}
+      
+      {loading ? (
+        <div className="text-center py-8">Carregando metas...</div>
+      ) : goals.length === 0 ? (
+        <div className="text-center py-8">
+          <p className="text-gray-500 mb-4">Você ainda não tem metas financeiras.</p>
+          <Button 
+            onClick={() => handleShowForm()} 
+            className="bg-finance-blue hover:bg-blue-700"
+          >
+            Criar Primeira Meta
+          </Button>
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {goals.map((goal) => {
+            const progress = (goal.current_amount / goal.target_amount) * 100;
+            const categoryColor = getCategoryColor(goal.category);
+            const priorityColor = getPriorityColor(goal.priority);
+            const daysLeft = calculateDaysLeft(goal.deadline);
+            
+            return (
+              <Card key={goal.id} className="overflow-hidden">
+                <div 
+                  className="h-2" 
+                  style={{ backgroundColor: categoryColor }}
+                ></div>
+                <div className="p-5">
+                  <div className="flex justify-between items-start mb-3">
+                    <h3 className="font-bold text-lg">{goal.title}</h3>
+                    <div 
+                      className="px-2 py-1 text-xs rounded-full text-white"
+                      style={{ backgroundColor: priorityColor }}
+                    >
+                      {priorityLevels.find(p => p.id === goal.priority)?.name}
+                    </div>
+                  </div>
+                  
+                  {goal.description && (
+                    <p className="text-gray-600 text-sm mb-3">{goal.description}</p>
+                  )}
+                  
+                  <div className="mb-4">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Progresso</span>
+                      <span>{progress.toFixed(0)}%</span>
+                    </div>
+                    <Progress 
+                      value={progress} 
+                      className="h-2 mt-2 bg-opacity-20" 
+                      style={{ backgroundColor: `${categoryColor}30` }} 
+                    />
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    <div className="text-center p-2 bg-gray-50 rounded">
+                      <p className="text-xs text-gray-500">Meta</p>
+                      <p className="font-semibold">{formatCurrency(goal.target_amount)}</p>
+                    </div>
+                    <div className="text-center p-2 bg-gray-50 rounded">
+                      <p className="text-xs text-gray-500">Atual</p>
+                      <p className="font-semibold">{formatCurrency(goal.current_amount)}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <p className="text-xs text-gray-500">Categoria</p>
+                      <p className="text-sm font-medium">
+                        {goalCategories.find(cat => cat.id === goal.category)?.name}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-gray-500">Prazo</p>
+                      <p className={`text-sm font-medium ${daysLeft < 30 ? 'text-red-500' : ''}`}>
+                        {daysLeft <= 0 ? 'Vencido' : `${daysLeft} dias`}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col space-y-2">
+                    <div className="flex space-x-2">
+                      <input
+                        type="number"
+                        placeholder="Atualizar valor"
+                        className="flex-1 p-2 text-sm border rounded"
+                        min="0"
+                        step="0.01"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            handleUpdateProgress(goal, (e.target as HTMLInputElement).value);
+                            (e.target as HTMLInputElement).value = '';
+                          }
+                        }}
+                      />
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => handleShowForm(goal)}
+                      >
+                        Editar
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        className="text-red-500 hover:text-red-700"
+                        onClick={() => handleDelete(goal.id)}
+                      >
+                        Excluir
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 };
