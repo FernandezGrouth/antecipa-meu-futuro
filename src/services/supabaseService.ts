@@ -39,19 +39,6 @@ export interface Transaction {
   created_at: string;
 }
 
-export interface Subscription {
-  id: string;
-  user_id: string;
-  email: string;
-  stripe_customer_id: string | null;
-  subscribed: boolean;
-  trial_ends_at: string | null;
-  subscription_tier: string | null;
-  subscription_end: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
 // Goals
 export const fetchGoals = async () => {
   try {
@@ -239,88 +226,5 @@ export const createTransaction = async (transaction: Omit<Transaction, "id" | "u
       variant: "destructive",
     });
     return null;
-  }
-};
-
-// Subscription
-export const fetchSubscription = async () => {
-  try {
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) throw sessionError;
-    
-    const { data, error } = await supabase
-      .from("subscribers")
-      .select("*")
-      .eq("user_id", sessionData.session?.user.id)
-      .single();
-    
-    if (error) throw error;
-    return data;
-  } catch (error: any) {
-    console.error("Error fetching subscription:", error);
-    return null;
-  }
-};
-
-export const createCheckoutSession = async (priceId: string, isAnnual: boolean) => {
-  try {
-    const { data, error } = await supabase.functions.invoke('create-checkout', {
-      body: { priceId, isAnnual }
-    });
-
-    if (error) throw error;
-    
-    if (data?.url) {
-      // Open Stripe checkout in a new tab
-      window.open(data.url, '_blank');
-      return true;
-    }
-    
-    return false;
-  } catch (error: any) {
-    toast({
-      title: "Erro ao criar sessão de pagamento",
-      description: error.message,
-      variant: "destructive",
-    });
-    return false;
-  }
-};
-
-export const checkSubscriptionStatus = async () => {
-  try {
-    const subscription = await fetchSubscription();
-    
-    if (!subscription) return { isSubscribed: false, inTrial: false, trialEndsAt: null };
-    
-    const now = new Date();
-    const trialEndsAt = subscription.trial_ends_at ? new Date(subscription.trial_ends_at) : null;
-    const subscriptionEndsAt = subscription.subscription_end ? new Date(subscription.subscription_end) : null;
-    
-    const isSubscribed = subscription.subscribed;
-    const inTrial = trialEndsAt ? now < trialEndsAt : false;
-    const subscriptionActive = subscriptionEndsAt ? now < subscriptionEndsAt : false;
-    
-    return { 
-      isSubscribed, 
-      inTrial, 
-      trialEndsAt, 
-      subscriptionActive,
-      subscriptionEndsAt,
-      subscription 
-    };
-  } catch (error: any) {
-    console.error("Error checking subscription status:", error);
-    return { isSubscribed: false, inTrial: false, trialEndsAt: null };
-  }
-};
-
-export const isAccessAllowed = async () => {
-  try {
-    const { isSubscribed, inTrial } = await checkSubscriptionStatus();
-    return isSubscribed || inTrial;
-  } catch (error) {
-    console.error("Error checking access permission:", error);
-    return false;
   }
 };

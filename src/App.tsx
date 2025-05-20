@@ -6,8 +6,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { useAuth } from "@/contexts/AuthContext";
-import SubscriptionGuard from "@/components/layout/SubscriptionGuard";
-import UpgradeBanner from "@/components/subscription/UpgradeBanner";
 import Index from "./pages/Index";
 import SimulatorPage from "./pages/SimulatorPage";
 import BudgetPage from "./pages/BudgetPage";
@@ -30,43 +28,18 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <Navigate to="/auth" />;
   }
 
-  return (
-    <>
-      <UpgradeBanner />
-      {children}
-    </>
-  );
+  return <>{children}</>;
 };
 
 // Auth wrapper to handle auth context
 const AuthenticatedApp = () => (
   <Routes>
     <Route path="/auth" element={<AuthPage />} />
-    <Route path="/" element={
-      <ProtectedRoute>
-        <SubscriptionGuard><Index /></SubscriptionGuard>
-      </ProtectedRoute>
-    } />
-    <Route path="/simulator" element={
-      <ProtectedRoute>
-        <SubscriptionGuard><SimulatorPage /></SubscriptionGuard>
-      </ProtectedRoute>
-    } />
-    <Route path="/budget" element={
-      <ProtectedRoute>
-        <SubscriptionGuard><BudgetPage /></SubscriptionGuard>
-      </ProtectedRoute>
-    } />
-    <Route path="/goals" element={
-      <ProtectedRoute>
-        <SubscriptionGuard><GoalsPage /></SubscriptionGuard>
-      </ProtectedRoute>
-    } />
-    <Route path="/education" element={
-      <ProtectedRoute>
-        <SubscriptionGuard><EducationPage /></SubscriptionGuard>
-      </ProtectedRoute>
-    } />
+    <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
+    <Route path="/simulator" element={<ProtectedRoute><SimulatorPage /></ProtectedRoute>} />
+    <Route path="/budget" element={<ProtectedRoute><BudgetPage /></ProtectedRoute>} />
+    <Route path="/goals" element={<ProtectedRoute><GoalsPage /></ProtectedRoute>} />
+    <Route path="/education" element={<ProtectedRoute><EducationPage /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );
